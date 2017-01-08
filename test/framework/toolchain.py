@@ -354,33 +354,80 @@ class ToolchainTest(EnhancedTestCase):
                         else:
                             self.assertFalse(generic_flags in tc.get_variable(var))
 
-    def test_optarch_aarch64_heuristic(self):
-        """Test whether AArch64 pre-GCC-6 optimal architecture flag heuristic works."""
-        st.get_cpu_architecture = lambda: st.AARCH64
+    def test_optarch_flags(self):
+        """Test optimal architecture flags."""
+
+        def test_flags(tc_list):
+            for tc_name, tc_ver, flag in tc_list:
+                tc = self.get_toolchain(tc_name, version=tc_ver)
+                tc.set_options({})
+                tc.prepare()
+                self.assertEqual(tc.options.options_map['optarch'], flag)
+                self.assertTrue("-%s" % flag in os.environ['CFLAGS'])
+                self.modtool.purge()
+
+        # Mocked ARMv7 (AArch32) CPU
+        st.get_cpu_architecture = lambda: st.AARCH32
         st.get_cpu_family = lambda: st.ARM
-        st.get_cpu_model = lambda: 'ARM Cortex-A53'
+        st.get_cpu_model = lambda: 'ARM Cortex-A7'
         st.get_cpu_vendor = lambda: st.ARM
-        tc = self.get_toolchain("GCC", version="4.7.2")
-        tc.set_options({})
-        tc.prepare()
-        self.assertEqual(tc.options.options_map['optarch'], 'mcpu=cortex-a53')
-        self.assertTrue('-mcpu=cortex-a53' in os.environ['CFLAGS'])
-        self.modtool.purge()
 
-        tc = self.get_toolchain("GCCcore", version="6.2.0")
-        tc.set_options({})
-        tc.prepare()
-        self.assertEqual(tc.options.options_map['optarch'], 'mcpu=native')
-        self.assertTrue('-mcpu=native' in os.environ['CFLAGS'])
-        self.modtool.purge()
+        test_tcs = [
+            ('GCC', '4.7.2', 'mcpu=native'),
+        ]
+        test_flags(test_tcs)
 
+        # Mocked ARMv8 (AArch64) CPU
+        st.get_cpu_architecture = lambda: st.AARCH64
+        st.get_cpu_model = lambda: 'ARM Cortex-A53'
+
+        test_tcs = [
+            ('GCC', '4.7.2', 'mcpu=cortex-a53'),  # pre-GCC-6 heuristic
+            ('GCCcore', '6.2.0', 'mcpu=native'),
+        ]
+        test_flags(test_tcs)
+
+        # Mocked ARMv8 (AArch64) big.LITTLE CPU
         st.get_cpu_model = lambda: 'ARM Cortex-A53 + Cortex-A72'
-        tc = self.get_toolchain("GCC", version="4.7.2")
-        tc.set_options({})
-        tc.prepare()
-        self.assertEqual(tc.options.options_map['optarch'], 'mcpu=cortex-a72.cortex-a53')
-        self.assertTrue('-mcpu=cortex-a72.cortex-a53' in os.environ['CFLAGS'])
-        self.modtool.purge()
+
+        test_tcs = [
+            ('GCC', '4.7.2', 'mcpu=cortex-a72.cortex-a53'),  # pre-GCC-6 heuristic
+            ('GCCcore', '6.2.0', 'mcpu=native'),
+        ]
+        test_flags(test_tcs)
+
+        # Mocked POWER CPU
+        st.get_cpu_architecture = lambda: st.POWER
+        st.get_cpu_family = lambda: st.POWER
+        st.get_cpu_model = lambda: 'IBM,8205-E6C'
+        st.get_cpu_vendor = lambda: st.IBM
+
+        test_tcs = [
+            ('GCC', '4.7.2', 'mcpu=native'),
+            ('ClangGCC', '1.1.2', 'mcpu=native'),
+        ]
+        test_flags(test_tcs)
+
+        # Mocked x86_64/Intel CPU
+        st.get_cpu_architecture = lambda: st.X86_64
+        st.get_cpu_family = lambda: st.INTEL
+        st.get_cpu_model = lambda: 'Intel(R) Xeon(R) CPU E5-2670 0 @ 2.60GHz'
+        st.get_cpu_vendor = lambda: st.INTEL
+
+        test_tcs = [
+            ('GCC', '4.7.2', 'march=native'),
+            ('iccifort', '2011.13.367', 'xHost'),
+            ('ClangGCC', '1.1.2', 'march=native'),
+        ]
+        test_flags(test_tcs)
+
+        # Mocked x86_64/AMD CPU
+        st.get_cpu_architecture = lambda: st.X86_64
+        st.get_cpu_family = lambda: st.AMD
+        st.get_cpu_model = lambda: 'Six-Core AMD Opteron(tm) Processor 2427'
+        st.get_cpu_vendor = lambda: st.AMD
+
+        test_flags(test_tcs)
 
     def test_misc_flags_unique_fortran(self):
         """Test whether unique Fortran compiler flags are set correctly."""
